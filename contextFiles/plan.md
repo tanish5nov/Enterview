@@ -1,1375 +1,345 @@
-Project: AI SWE Mock Interviewer
-
-Document Purpose
-- Provide a very granular, end-to-end implementation plan for V1.
-- Keep each step small enough that it can be built and validated independently.
-- Preserve an iterative development path where the project remains understandable and testable at every stage.
-
-Plan Principles
-- Build the smallest working slice first.
-- Validate each layer before stacking the next one on top.
-- Prefer end-to-end thin slices over large isolated subsystems.
-- Keep fallback-friendly architecture from the beginning.
-- Do not optimize for scale before correctness.
-
-Execution Style
-- Each step should produce a visible or testable outcome.
-- Each step should have a narrow change surface.
-- If a step introduces a new subsystem, validate it immediately before proceeding.
-- After each step, run the listed test cases before moving ahead.
-
-Phase 0: Workspace Foundation
-
-Step 0.1
-- Create the repo/folder structure for:
-  - `client/`
-  - `server/`
-  - `docs/` if needed
-  - shared config files
-Validation
-- project directories exist and are cleanly separated
-Test Cases
-- expected folders are present
-- no unintended nested app structure is created
-- path naming is consistent and unambiguous
-
-Step 0.2
-- Initialize React client app
-- Initialize Express server app
-Validation
-- client starts locally
-- server starts locally
-Test Cases
-- client dev server boots without crash
-- server process boots without crash
-- both apps can run independently
-- root docs/design files remain untouched
-
-Step 0.3
-- Add root-level scripts for starting client and server
-Validation
-- both services can be started from a documented command flow
-Test Cases
-- root script starts client successfully
-- root script starts server successfully
-- failure output is readable when one service is unavailable
-
-Step 0.4
-- Add environment variable scaffolding for:
-  - Mongo connection
-  - Redis connection
-  - JWT secrets
-  - Ollama base URL
-Validation
-- app boots with env placeholders and fails clearly when required vars are missing
-Test Cases
-- server fails with clear error when Mongo URL is missing
-- server fails with clear error when Redis URL is missing
-- server fails with clear error when JWT secret is missing
-- env example file documents all required vars
-
-Step 0.5
-- Add linting/formatting/basic TypeScript setup where applicable
-Validation
-- lint command runs
-- typecheck command runs
-Test Cases
-- lint passes on clean scaffold
-- typecheck passes on clean scaffold
-- intentionally broken type causes typecheck failure
-
-Phase 1: Basic Persistent Backend Setup
-
-Step 1.1
-- Connect Express server to MongoDB
-Validation
-- health endpoint confirms Mongo connection
-Test Cases
-- valid Mongo connection succeeds
-- invalid Mongo URL fails cleanly
-- server restart reconnects correctly
-
-Step 1.2
-- Connect Express server to Redis
-Validation
-- health endpoint confirms Redis connection
-Test Cases
-- valid Redis connection succeeds
-- invalid Redis URL fails cleanly
-- Redis disconnect is reflected by health logic
-
-Step 1.3
-- Create a basic server health route that checks:
-  - server alive
-  - Mongo reachable
-  - Redis reachable
-Validation
-- health response returns all subsystem statuses
-Test Cases
-- health route returns healthy status when all dependencies are up
-- health route returns degraded status when Mongo is down
-- health route returns degraded status when Redis is down
-
-Step 1.4
-- Create basic shared backend logging utilities
-Validation
-- requests log cleanly in development
-Test Cases
-- normal request logs once
-- failed request logs useful error context
-- log output stays readable in local development
-
-Phase 2: Auth Foundation
-
-Step 2.1
-- Create `User` model
-Validation
-- user document can be inserted and read from Mongo
-Test Cases
-- valid user insert succeeds
-- missing required fields fail
-- duplicate identity constraint behaves correctly if implemented
-
-Step 2.2
-- Create `AuthSession` model
-Validation
-- auth session document can be inserted and read from Mongo
-Test Cases
-- valid auth session insert succeeds
-- missing required session fields fail
-- revoked/expired state can be stored and queried
-
-Step 2.3
-- Implement signup API
-Validation
-- user can sign up and record appears in Mongo
-Test Cases
-- valid signup succeeds
-- duplicate signup fails gracefully
-- malformed signup body fails validation
-- password is not stored in plain text
-
-Step 2.4
-- Implement login API with password verification
-Validation
-- valid login succeeds
-- invalid login fails correctly
-Test Cases
-- valid credentials return success
-- wrong password fails
-- unknown user fails
-- malformed login body fails validation
-
-Step 2.5
-- Implement JWT access token generation
-Validation
-- access token is returned and can be decoded/verified
-Test Cases
-- valid login returns JWT
-- JWT verifies with configured secret
-- invalid/expired token fails verification
-
-Step 2.6
-- Implement refresh token issuance and persistent session creation
-Validation
-- login creates `AuthSession`
-- refresh token is stored hashed
-Test Cases
-- auth session record is created on login
-- refresh token hash is stored, not raw token
-- second login creates predictable additional auth session behavior
-
-Step 2.7
-- Implement refresh endpoint
-Validation
-- expired/near-expired access token can be renewed using refresh token
-Test Cases
-- valid refresh token issues new access token
-- revoked refresh token fails
-- missing refresh token fails
-- rotated refresh flow updates stored session correctly if rotation is enabled
-
-Step 2.8
-- Implement logout endpoint
-Validation
-- auth session is revoked/deleted
-- refresh token can no longer be used
-Test Cases
-- logout succeeds for authenticated user
-- logged-out refresh token cannot mint new access token
-- repeated logout does not corrupt session state
-
-Step 2.9
-- Add auth middleware for protected routes
-Validation
-- protected route rejects unauthenticated request
-- protected route accepts valid JWT
-Test Cases
-- no token returns unauthorized
-- invalid token returns unauthorized
-- valid token allows access
-- expired token returns unauthorized
-
-Phase 3: Basic Client Auth Flow
-
-Step 3.1
-- Create signup page/form
-Validation
-- user can submit signup from UI
-Test Cases
-- valid signup form submits successfully
-- invalid inputs show field-level errors
-- backend error shows understandable message
-
-Step 3.2
-- Create login page/form
-Validation
-- user can log in from UI
-Test Cases
-- valid login redirects into app
-- wrong credentials show error
-- missing fields are blocked by client validation if present
-
-Step 3.3
-- Add authenticated route guard on client
-Validation
-- unauthenticated user is redirected away from protected pages
-Test Cases
-- unauthenticated navigation redirects to login
-- authenticated user can access protected route
-- expired auth eventually forces re-auth
-
-Step 3.4
-- Add basic authenticated app shell placeholder
-Validation
-- logged-in user sees private app shell
-Test Cases
-- authenticated user sees shell
-- unauthenticated user does not
-- shell survives refresh while auth remains valid
-
-Phase 4: Interview Session Skeleton
-
-Step 4.1
-- Create `InterviewSession` model
-Validation
-- empty interview session document can be created
-Test Cases
-- valid interview session insert succeeds
-- invalid status enum fails
-- missing required fields fail
-
-Step 4.2
-- Create minimal API to create a new interview session
-Validation
-- authenticated user can create a session
-Test Cases
-- authenticated request creates session
-- unauthenticated request fails
-- malformed payload fails validation
-
-Step 4.3
-- Enforce “one active session per user” rule at API layer
-Validation
-- second active session creation is blocked or resumes existing one
-Test Cases
-- user with no active session can create one
-- user with active session cannot create duplicate active session
-- completed session does not block a new one
-
-Step 4.4
-- Add session listing API
-Validation
-- user can fetch all their interview sessions
-Test Cases
-- list returns only current user sessions
-- empty history returns empty list
-- unauthorized access fails
-
-Step 4.5
-- Add session detail API
-Validation
-- user can fetch one session by id
-Test Cases
-- user can fetch own session
-- user cannot fetch another user’s session
-- nonexistent session returns not found
-
-Phase 5: Upload and Extraction Skeleton
-
-Step 5.1
-- Create UI for uploading resume and JD
-Validation
-- files/text can be submitted from client
-Test Cases
-- resume upload control accepts supported input
-- JD upload or pasted text input works
-- missing required inputs block submission
-
-Step 5.2
-- Create backend upload endpoint for resume/JD intake
-Validation
-- server receives upload and acknowledges it
-Test Cases
-- valid upload succeeds
-- unsupported file type fails
-- oversized upload fails clearly
-
-Step 5.3
-- Store raw upload metadata in Mongo
-Validation
-- uploaded file metadata appears in DB
-Test Cases
-- resume metadata is saved
-- JD metadata is saved
-- metadata links to correct user/session
-
-Step 5.4
-- Implement simple text extraction placeholder path
-Validation
-- backend can return extracted plain text from sample/test input
-Test Cases
-- sample resume text extracts successfully
-- sample JD text extracts successfully
-- empty/invalid input produces clear failure
-
-Step 5.5
-- Create extracted summary response structure without LLM yet
-Validation
-- client receives candidate/JD summary placeholders
-Test Cases
-- summary response matches expected shape
-- missing sections still produce valid response shell
-
-Step 5.6
-- Build extraction review UI
-Validation
-- user can see extracted summary before continuing
-Test Cases
-- extracted candidate summary renders
-- extracted JD summary renders
-- user cannot continue if required review data is missing
-
-Phase 6: LLM Connectivity Skeleton
-
-Step 6.1
-- Connect backend to Ollama
-Validation
-- test route can send a prompt and receive a response from local model
-Test Cases
-- Ollama reachable path succeeds
-- unavailable model path fails clearly
-- timeout is handled gracefully
-
-Step 6.2
-- Add LangChain wrapper around Ollama
-Validation
-- simple LangChain call succeeds against local model
-Test Cases
-- wrapper returns model response
-- provider abstraction hides raw implementation details
-- failure path is surfaced cleanly
-
-Step 6.3
-- Add Zod-based structured output validation for one tiny test prompt
-Validation
-- valid response passes
-- malformed response fails validation
-Test Cases
-- schema-valid JSON passes
-- missing required field fails
-- wrong enum value fails
-- malformed JSON fails
-
-Step 6.4
-- Implement retry-on-invalid-output utility
-Validation
-- malformed output triggers retry path
-Test Cases
-- first invalid output triggers retry
-- repeated invalid output produces controlled failure
-- valid first output does not retry
-
-Phase 7: Resume/JD Structured Extraction
-
-Step 7.1
-- Implement extraction prompt using LangChain
-Validation
-- raw resume/JD text returns structured JSON
-Test Cases
-- realistic resume extracts required candidate fields
-- realistic JD extracts required role fields
-- sparse input still returns structured output plus warnings
-
-Step 7.2
-- Validate extracted JSON with Zod
-Validation
-- extraction output is accepted only if schema-valid
-Test Cases
-- valid extraction passes
-- missing required extracted field fails
-- wrong extracted field type fails
-
-Step 7.3
-- Persist extracted candidate profile summary
-Validation
-- extracted candidate fields are stored in Mongo
-Test Cases
-- candidate summary persists correctly
-- repeated extraction updates or versions cleanly based on chosen approach
-
-Step 7.4
-- Persist extracted JD profile summary
-Validation
-- extracted JD fields are stored in Mongo
-Test Cases
-- JD summary persists correctly
-- JD summary links to correct interview session
-
-Step 7.5
-- Add low-confidence extraction warnings
-Validation
-- client can see warnings when extraction quality is low
-Test Cases
-- low-confidence field produces warning
-- high-confidence extraction does not show false warnings
-
-Step 7.6
-- Add extraction review confirmation API
-Validation
-- user can confirm extracted context and move session forward
-Test Cases
-- valid confirmation succeeds
-- confirmation fails if required extraction pieces are missing
-- unauthorized confirmation fails
-
-Phase 8: Interview Configuration Flow
-
-Step 8.1
-- Build UI for selecting:
-  - track
-  - difficulty
-  - interviewer mode
-  - hint mode
-  - company type
-  - duration
-Validation
-- config can be filled from client
-Test Cases
-- all config fields render
-- sensible defaults are pre-selected
-- invalid combinations are blocked if constraints exist
-
-Step 8.2
-- Persist session config in Mongo
-Validation
-- session config is stored and retrievable
-Test Cases
-- config save succeeds
-- saved config reloads correctly
-- invalid config payload fails validation
-
-Step 8.3
-- Initialize corresponding live runtime state in Redis
-Validation
-- Redis contains initial live state snapshot for the session
-Test Cases
-- live state is created once config is confirmed
-- initial state contains expected required keys
-- duplicate initialization does not corrupt state
-
-Phase 9: WebSocket Foundation
-
-Step 9.1
-- Add WebSocket server to backend
-Validation
-- client can connect to socket
-Test Cases
-- socket connects successfully
-- duplicate connections do not crash server
-- unsupported path/origin handling is safe if configured
-
-Step 9.2
-- Authenticate WebSocket connection using JWT
-Validation
-- invalid token rejects socket
-- valid token connects
-Test Cases
-- valid JWT connects
-- invalid JWT is rejected
-- expired JWT is rejected
-
-Step 9.3
-- Map socket connection to user/session in Redis
-Validation
-- live socket/session mapping is visible in Redis
-Test Cases
-- mapping is created on connect
-- mapping is removed on disconnect
-- reconnect updates mapping correctly
-
-Step 9.4
-- Add simple ping/pong or session state event
-Validation
-- client receives live server event over WebSocket
-Test Cases
-- client receives event payload
-- disconnected socket does not receive new event
-- unknown inbound event is handled safely
-
-Phase 10: Live Interview Bootstrap
-
-Step 10.1
-- Add API or socket event to start live interview
-Validation
-- session moves from setup state to live-ready state
-Test Cases
-- valid session starts
-- already-started active session does not duplicate start
-- invalid session id fails cleanly
-
-Step 10.2
-- Seed first interview question with a static placeholder question
-Validation
-- client receives first question event over WebSocket
-Test Cases
-- first question is sent once
-- question payload links to correct session
-- placeholder question text is rendered correctly
-
-Step 10.3
-- Show live interview screen with:
-  - question text
-  - timer placeholder
-  - controls row
-Validation
-- live screen renders correctly after interview starts
-Test Cases
-- live screen opens after start event
-- timer placeholder is visible
-- controls row renders with expected buttons
-
-Phase 11: Browser Voice Output/Input Basics
-
-Step 11.1
-- Integrate browser `speechSynthesis` for question playback
-Validation
-- question text is spoken automatically on client
-Test Cases
-- supported browser plays question audio
-- unsupported browser degrades gracefully
-- question is not played twice accidentally
-
-Step 11.2
-- Integrate `MediaRecorder` for answer recording
-Validation
-- client can record answer audio
-Test Cases
-- mic permission grant works
-- denied mic permission shows clear recovery path
-- recording produces usable audio blob
-
-Step 11.3
-- Auto-open mic after question playback ends
-Validation
-- user can answer only after question finishes
-Test Cases
-- recording starts only after playback end
-- replaying question does not break recording state logic
-
-Step 11.4
-- Add stop-recording and submit behavior
-Validation
-- recorded audio can be captured and packaged for submission
-Test Cases
-- stop creates final blob
-- submit sends payload
-- empty recording is blocked or handled clearly
-
-Phase 12: First End-to-End Voice Turn
-
-Step 12.1
-- Send recorded answer audio from client to server over WebSocket
-Validation
-- backend receives audio payload
-Test Cases
-- audio payload reaches server
-- mime type is carried correctly
-- empty or oversized audio is handled safely
-
-Step 12.2
-- Send candidate text payload along with audio
-Validation
-- backend receives both audio and text
-Test Cases
-- audio plus text submission succeeds
-- audio-only path is handled if text is missing
-- malformed payload structure fails validation
-
-Step 12.3
-- Store raw turn payload temporarily
-Validation
-- backend can log/store the submitted turn safely
-Test Cases
-- temporary payload persists through processing window
-- temp payload cleanup happens after completion/failure
-
-Step 12.4
-- Return a placeholder “answer received” event
-Validation
-- client sees successful turn submission response
-Test Cases
-- success acknowledgement reaches client
-- rejection path sends error acknowledgement
-
-Phase 13: STT Integration
-
-Step 13.1
-- Integrate `whisper.cpp` on the backend
-Validation
-- backend can transcribe a test audio file locally
-Test Cases
-- valid sample audio transcribes
-- invalid audio fails gracefully
-- missing whisper dependency is surfaced clearly
-
-Step 13.2
-- Run `whisper.cpp` on submitted answer audio
-Validation
-- backend returns server-generated transcript for live answer
-Test Cases
-- real recorded answer produces transcript
-- long answer completes within acceptable behavior
-- silent/empty audio yields meaningful handling
-
-Step 13.3
-- Add transcript reconciliation logic using:
-  - client text
-  - server STT text
-Validation
-- backend produces one accepted transcript
-Test Cases
-- close client/server transcript match yields accepted transcript
-- large mismatch triggers review path
-- missing client text falls back to server STT
-
-Step 13.4
-- Send accepted transcript to client for review
-Validation
-- client displays transcript review UI
-Test Cases
-- transcript review appears after STT completes
-- transcript belongs to correct turn/session
-
-Step 13.5
-- Implement transcript confirm / re-record path
-Validation
-- user can accept transcript or re-record answer
-Test Cases
-- confirm path stores accepted transcript
-- re-record path replaces pending answer
-- repeated re-record does not corrupt turn state
-
-Phase 14: Persistent Turn Storage
-
-Step 14.1
-- Create `InterviewTurn` model
-Validation
-- turn document can be stored in Mongo
-Test Cases
-- valid turn insert succeeds
-- invalid turn shape fails validation
-
-Step 14.2
-- Persist accepted turn transcript
-Validation
-- confirmed transcript is saved in DB
-Test Cases
-- accepted transcript persists once
-- duplicate persistence is prevented or handled predictably
-
-Step 14.3
-- Persist turn metadata:
-  - duration
-  - question id
-  - controls used
-Validation
-- turn metadata is stored and retrievable
-Test Cases
-- metadata persists for confirmed turn
-- optional metadata omission does not break persistence
-
-Phase 15: Runtime Interview State in Redis
-
-Step 15.1
-- Define minimal Redis live state shape
-Validation
-- state can be created/read/updated from Redis
-Test Cases
-- new state key is created
-- read returns expected structure
-- update preserves required fields
-
-Step 15.2
-- Update live state after each accepted turn
-Validation
-- accepted transcript updates Redis state
-Test Cases
-- turn count increments
-- latest accepted transcript is reflected in state
-- current objective/branch placeholders update correctly
-
-Step 15.3
-- Add Redis checkpoint reads on live session resume
-Validation
-- interrupted session can restore latest live state
-Test Cases
-- interrupted session reloads last Redis state
-- missing Redis state falls back cleanly if Mongo checkpoint exists
-
-Phase 16: Interview Engine Minimal Loop
-
-Step 16.1
-- Implement minimal interview phase state machine:
-  - setup
-  - warmup
-  - completed
-Validation
-- session transitions correctly through early phases
-Test Cases
-- setup transitions to warmup
-- warmup transitions to completed in placeholder flow
-- invalid phase transition is blocked
-
-Step 16.2
-- Implement first deterministic next-question generator without LLM
-Validation
-- backend can ask a second question after first accepted answer
-Test Cases
-- same input state yields same next question
-- second question is generated after first answer acceptance
-
-Step 16.3
-- Complete first full multi-turn loop:
-  - ask
-  - answer
-  - transcript accept
-  - next question
-Validation
-- two-turn interview works end to end
-Test Cases
-- first two-turn happy path completes
-- accepted transcript persists across turns
-
-Phase 17: Branching Model Introduction
-
-Step 17.1
-- Define branch schema in code
-Validation
-- branch object can be created and stored in runtime state
-Test Cases
-- valid branch object passes validation
-- invalid branch status/shape fails
-
-Step 17.2
-- Create first root branch from selected track
-Validation
-- live state starts with root branch
-Test Cases
-- selected track produces matching root branch
-- root branch is active initially
-
-Step 17.3
-- Add static branch generation from accepted answer using simple rules
-Validation
-- answer creates predictable candidate branches
-Test Cases
-- tool mention creates expected branches
-- no-branch edge case is handled safely
-
-Step 17.4
-- Add active branch vs pending branches state
-Validation
-- engine can distinguish current branch from future branches
-Test Cases
-- one branch is marked active
-- other branches are stored as pending
-- pending branches survive next turn update
-
-Phase 18: Claim Extraction and Contradiction Skeleton
-
-Step 18.1
-- Define claim schema in code
-Validation
-- claim object can be created and stored
-Test Cases
-- valid claim passes validation
-- invalid claim type fails validation
-
-Step 18.2
-- Implement simple deterministic claim extraction from accepted transcript
-Validation
-- basic tool/decision claims can be extracted from sample answers
-Test Cases
-- tools mentioned in transcript create `used_tool` claims
-- decisions mentioned create decision claims
-- irrelevant filler does not create excessive noise
-
-Step 18.3
-- Define contradiction schema in code
-Validation
-- contradiction object can be created and stored
-Test Cases
-- valid contradiction object passes validation
-- contradiction status enum works
-
-Step 18.4
-- Add first contradiction detection rule against prior claims
-Validation
-- obvious contradiction is detected on test input
-Test Cases
-- conflicting claim pair raises contradiction
-- harmless rephrase does not falsely trigger contradiction
-
-Phase 19: LLM-Assisted Branch Generation
-
-Step 19.1
-- Add branch-generation prompt using current answer + state
-Validation
-- LLM returns candidate follow-up branches
-Test Cases
-- branch prompt returns structured branches
-- low-information answer still returns limited safe suggestions
-
-Step 19.2
-- Validate branch-generation output with Zod
-Validation
-- invalid branch output is rejected
-Test Cases
-- valid output passes
-- malformed JSON fails
-- invalid enum values fail
-
-Step 19.3
-- Merge validated LLM branch suggestions into live branch state
-Validation
-- runtime state includes LLM-generated branches
-Test Cases
-- validated branches merge into pending state correctly
-- duplicate branch suggestions are deduped if dedupe is implemented
-
-Phase 20: Deterministic Branch Scoring
-
-Step 20.1
-- Implement branch priority scoring function in code
-Validation
-- same input consistently yields same branch score
-Test Cases
-- fixed inputs yield repeatable score
-- higher contradiction severity increases score
-- lower JD relevance decreases score
-
-Step 20.2
-- Add tie-break rules
-Validation
-- equal-priority branches resolve predictably
-Test Cases
-- contradiction branch wins allowed tie
-- active branch continuity tie resolves predictably
-
-Step 20.3
-- Select next active branch using scored branch set
-Validation
-- engine chooses branch deterministically
-Test Cases
-- top-scored eligible branch becomes active
-- dropped/closed branch is not reselected
-
-Phase 21: LLM-Assisted Question Generation
-
-Step 21.1
-- Add next-question prompt using:
-  - chosen branch
-  - phase
-  - objective
-Validation
-- LLM generates one follow-up question
-Test Cases
-- returned question matches chosen branch context
-- output contains exactly one interviewer question
-
-Step 21.2
-- Validate generated question with Zod
-Validation
-- malformed question output is rejected
-Test Cases
-- valid question output passes
-- missing question text fails
-- invalid question class fails
-
-Step 21.3
-- Send generated question to client and speak it
-Validation
-- candidate receives LLM-generated follow-up question
-Test Cases
-- question reaches client
-- speech playback works
-- client can answer follow-up normally
-
-Phase 22: Topic Scorecards
-
-Step 22.1
-- Define scorecard schema in code
-Validation
-- scorecard can be created and stored
-Test Cases
-- valid scorecard passes validation
-- invalid score value/range fails validation
-
-Step 22.2
-- Create scorecards for primary topics
-Validation
-- live session contains topic scorecards
-Test Cases
-- primary track creates expected initial scorecards
-- scorecards link to correct topics
-
-Step 22.3
-- Add placeholder deterministic scoring updates from accepted answer
-Validation
-- answer updates topic scorecard values
-Test Cases
-- accepted answer updates score values
-- unrelated answer does not corrupt unrelated topic scorecards
-
-Phase 23: LLM-Assisted Answer Evaluation
-
-Step 23.1
-- Add scoring prompt for accepted answer
-Validation
-- LLM returns structured scoring observations
-Test Cases
-- scoring prompt returns dimension updates
-- scoring prompt returns evidence items when appropriate
-
-Step 23.2
-- Validate scoring output with Zod
-Validation
-- invalid scoring output is rejected
-Test Cases
-- valid scoring output passes
-- malformed evidence structure fails
-- invalid score ranges fail
-
-Step 23.3
-- Merge scoring observations into scorecards and evidence store
-Validation
-- evidence and dimension updates appear in runtime state
-Test Cases
-- evidence items persist correctly
-- score updates affect the right topic
-- contradiction suspicion hooks into contradiction workflow if present
-
-Phase 24: Coverage and Phase Management
-
-Step 24.1
-- Implement coverage counters for major topics
-Validation
-- engine tracks explored topic count
-Test Cases
-- explored topic count increments when new major topic is covered
-- repeated probing of same topic does not inflate count
-
-Step 24.2
-- Implement transition from warmup to primary probe
-Validation
-- session changes phase at right time
-Test Cases
-- warmup transition occurs after expected evidence threshold
-- premature transition is blocked
-
-Step 24.3
-- Implement transition from primary probe to coverage probe
-Validation
-- phase transition occurs based on time/coverage
-Test Cases
-- enough primary exploration triggers coverage phase
-- insufficient exploration keeps primary phase active
-
-Step 24.4
-- Implement transition to wrap-up
-Validation
-- late-session behavior switches into wrap-up mode
-Test Cases
-- wrap-up begins at configured time threshold
-- unresolved high-value branch can still be prioritized inside wrap-up
-
-Phase 25: Timer and Duration Enforcement
-
-Step 25.1
-- Add session timer on backend
-Validation
-- backend tracks elapsed and remaining time
-Test Cases
-- timer starts on interview start
-- elapsed time increases correctly
-- remaining time decreases correctly
-
-Step 25.2
-- Surface timer state to client over WebSocket
-Validation
-- client displays live timer correctly
-Test Cases
-- client timer updates correctly
-- reconnect restores current timer state
-
-Step 25.3
-- Enforce phase adjustments based on remaining time
-Validation
-- branch depth reduces near end of session
-Test Cases
-- near-end session reduces deep probing bias
-- wrap-up behavior activates as expected
-
-Phase 26: User Controls During Interview
-
-Step 26.1
-- Implement `repeat question`
-Validation
-- client can request repeat and hear question again
-Test Cases
-- first repeat replays same question
-- repeated repeat behaves according to policy
-
-Step 26.2
-- Implement `give small hint`
-Validation
-- server returns small hint only
-Test Cases
-- hint returns when mode allows it
-- hint is blocked when hint mode is off
-- hint does not reveal full answer
-
-Step 26.3
-- Implement `skip`
-Validation
-- branch/turn is marked skipped and interview continues
-Test Cases
-- skip advances the session
-- skip is recorded in turn/session state
-
-Step 26.4
-- Implement `end interview`
-Validation
-- user can terminate session gracefully
-Test Cases
-- end control moves session into wrap-up/report path
-- partial evidence still generates safe output
-
-Phase 27: Final Scoring and Verdict
-
-Step 27.1
-- Implement topic score aggregation
-Validation
-- topic scores produce deterministic topic results
-Test Cases
-- same score inputs produce same topic score
-- confidence modifier affects topic score correctly
-
-Step 27.2
-- Implement overall score aggregation
-Validation
-- session produces overall numeric score
-Test Cases
-- primary and secondary topic weights apply correctly
-- lightly explored topic does not dominate final score
-
-Step 27.3
-- Implement verdict mapping
-Validation
-- score maps to verdict bucket correctly
-Test Cases
-- threshold scores map to expected verdicts
-- edge-case decimal scores map consistently
-
-Step 27.4
-- Implement hard-failure caps
-Validation
-- contradiction/core-failure cases cap verdict properly
-Test Cases
-- severe hard failure caps verdict
-- absence of hard failure does not cap verdict unnecessarily
-
-Phase 28: Final Report Generation
-
-Step 28.1
-- Create `InterviewReport` model
-Validation
-- report document can be stored
-Test Cases
-- valid report persists
-- invalid report shape fails validation
-
-Step 28.2
-- Add final report synthesis prompt
-Validation
-- LLM returns structured final report
-Test Cases
-- final report contains required major sections
-- report remains grounded in provided evidence
-
-Step 28.3
-- Validate final report with Zod
-Validation
-- malformed report output is rejected
-Test Cases
-- valid report passes schema
-- missing required section fails
-
-Step 28.4
-- Persist final report in Mongo
-Validation
-- completed session stores report
-Test Cases
-- report persists for completed session
-- report links to correct user/session
-
-Step 28.5
-- Send `report:ready` event to client
-Validation
-- client receives report-ready event after interview completion
-Test Cases
-- report-ready event arrives once
-- client can navigate to report from that event
-
-Phase 29: Final Report UI
-
-Step 29.1
-- Build report screen with:
-  - verdict
-  - overall score
-  - strengths
-  - weak areas
-Validation
-- user can open and read top-level report
-Test Cases
-- top-level report renders correctly
-- empty optional sections do not break UI
-
-Step 29.2
-- Add topic-wise breakdown display
-Validation
-- topic results are visible in UI
-Test Cases
-- all topic rows render
-- per-topic score displays accurately
-
-Step 29.3
-- Add ideal answer guidance and improvement plan sections
-Validation
-- detailed feedback is visible in report UI
-Test Cases
-- guidance section renders correctly
-- long feedback remains readable
-
-Phase 30: Session History
-
-Step 30.1
-- Build session history API
-Validation
-- user can fetch history list
-Test Cases
-- history returns only current user sessions
-- empty history returns empty list
-
-Step 30.2
-- Build session history UI
-Validation
-- user can view prior sessions
-Test Cases
-- history list renders correctly
-- empty state renders cleanly
-
-Step 30.3
-- Allow opening stored report from history
-Validation
-- old report can be loaded successfully
-Test Cases
-- selected history item opens correct report
-- unauthorized access to another user report is blocked
-
-Phase 31: Resume / Recovery
-
-Step 31.1
-- Add backend logic to detect interrupted session
-Validation
-- interrupted session is identifiable
-Test Cases
-- disconnected in-progress session is marked interrupted
-- completed session is not mislabeled interrupted
-
-Step 31.2
-- Add resume-live-session flow using Redis + Mongo checkpoint
-Validation
-- user can resume interrupted active interview
-Test Cases
-- resume restores active branch and phase
-- missing Redis state falls back to Mongo checkpoint
-- resumed session continues without duplication
-
-Step 31.3
-- Add client UI for resuming existing session
-Validation
-- user can resume instead of starting duplicate session
-Test Cases
-- interrupted session shows resume CTA
-- resume returns user to live interview screen
-
-Phase 32: Error and Fallback Hardening
-
-Step 32.1
-- Add LLM malformed-output fallback path
-Validation
-- fallback question generation works when main prompt fails
-Test Cases
-- invalid LLM output triggers fallback
-- fallback still generates usable question
-
-Step 32.2
-- Add STT failure recovery path
-Validation
-- repeated STT issues show retry/end behavior
-Test Cases
-- first STT failure offers retry
-- repeated STT failure enters controlled recovery path
-
-Step 32.3
-- Add graceful socket disconnect handling
-Validation
-- disconnect does not corrupt session state
-Test Cases
-- disconnect preserves Redis/Mongo state
-- reconnect does not create duplicate active session
-
-Step 32.4
-- Add session status handling:
-  - completed
-  - interrupted
-  - abandoned
-  - failed_setup
-Validation
-- sessions get correct terminal/non-terminal statuses
-Test Cases
-- early exit before meaningful progress marks abandoned
-- setup failure marks failed_setup
-- successful report marks completed
-
-Phase 33: End-to-End Quality Pass
-
-Step 33.1
-- Run full happy-path interview from signup to report
-Validation
-- complete flow works end to end
-Test Cases
-- new user can complete full interview
-- final report is produced and viewable
-
-Step 33.2
-- Run contradiction scenario
-Validation
-- contradiction detection and follow-up behavior work
-Test Cases
-- contradictory answers trigger contradiction path
-- unresolved contradiction affects final evaluation
-
-Step 33.3
-- Run short-answer / weak-answer scenario
-Validation
-- deeper probing occurs
-Test Cases
-- shallow answer produces deeper/clarifying follow-up
-- final report flags weak depth
-
-Step 33.4
-- Run skip/hint/repeat/end controls test
-Validation
-- all user controls work correctly
-Test Cases
-- each control works individually
-- combined control usage does not corrupt state
-
-Step 33.5
-- Run interrupted-session recovery scenario
-Validation
-- session can recover or fail safely
-Test Cases
-- recoverable session resumes successfully
-- unrecoverable case fails without data corruption
-
-Phase 34: Cleanup and Documentation
-
-Step 34.1
-- Clean up environment documentation
-Validation
-- setup instructions are reproducible
-Test Cases
-- fresh developer can follow setup doc successfully
-
-Step 34.2
-- Document local dependencies:
-  - Ollama
-  - qwen2:0.5b
-  - whisper.cpp
-  - MongoDB
-  - Redis
-Validation
-- new developer can understand required services
-Test Cases
-- dependency list is complete
-- installation notes are understandable
-
-Step 34.3
-- Document architecture and current V1 limitations
-Validation
-- repo clearly states intentional V1 tradeoffs
-Test Cases
-- limitations list includes all major V1 simplifications
-- architecture summary matches implementation intent
-
-Step 34.4
-- Add demo seed path or sample JD/resume fixtures
-Validation
-- local testing can happen without collecting fresh inputs every time
-Test Cases
-- sample fixtures load successfully
-- fixtures produce predictable extraction/interview behavior
-
-Final End State
-- After all steps are completed, the project should support:
-  - signup/login
-  - JWT + refresh-token-backed auth sessions
-  - resume/JD upload and extraction review
-  - interview configuration
-  - one active live interview session per user
-  - WebSocket-based live voice interview
-  - question playback and answer recording
-  - server-side STT with canonical transcript
-  - branching interview engine
-  - contradiction-aware probing
-  - topic scoring and final verdict
-  - final report generation
-  - session history
-  - recovery/fallback handling
-
-Recommended Build Order Summary
-- Foundation
-- Auth
-- Session skeleton
-- Upload/extraction
-- WebSocket live loop
-- Speech
-- Minimal interview engine
-- Branching
-- Scoring
-- Reporting
-- Recovery/hardening
+Project: Enterview — AI SWE Mock Interviewer
+Document Purpose: Granular V1 implementation plan. Every step has a clear, testable outcome.
+
+---
+
+## Phase 0: Project Foundation
+
+**0.1** Create repo structure
+```
+enterview/
+  client/
+  server/
+  docker/
+  docker-compose.yml
+  .env.example
+```
+
+**0.2** Write `docker-compose.yml` with all 4 services — frontend, backend, mongodb, ollama
+
+**0.3** Write `Dockerfile` for backend
+
+**0.4** Write `Dockerfile` for frontend
+
+**0.5** Write `.env.example` with all required variables — `MONGODB_URI`, `OLLAMA_URL`, `OLLAMA_MODEL`, `PORT`
+
+**0.6** Validate — `docker-compose up` starts all 4 containers without errors
+
+---
+
+## Phase 1: Backend Foundation
+
+**1.1** Initialize Express server with JSON middleware and basic error handler
+
+**1.2** Connect to MongoDB — fail clearly with readable error if not reachable
+
+**1.3** Connect to Ollama — ping `ollama/api/tags` on startup, fail clearly if not reachable
+
+**1.4** Write `/health` REST endpoint — returns status of MongoDB + Ollama
+
+**1.5** Add request logger middleware
+
+**1.6** Validate — health endpoint returns live status of all dependencies
+
+---
+
+## Phase 2: LLM Adapter
+
+**2.1** Create `server/src/llm/index.js` — exports one function `chat(prompt)`, nothing else in the app touches Ollama directly
+
+**2.2** Implement raw Ollama API call inside the adapter using `fetch` — no LangChain
+
+**2.3** Add streaming support — yield tokens as Ollama streams them
+
+**2.4** Create `server/src/llm/validate.js` — Zod utility that parses and validates LLM JSON output against a given schema
+
+**2.5** Add retry logic — on invalid JSON or failed Zod parse, retry once with a stricter format instruction appended to the prompt
+
+**2.6** Add fallback behavior — if retry also fails, return a safe hardcoded fallback object so the session never breaks
+
+**2.7** Validate — send a test prompt, get structured JSON back, break the JSON intentionally and confirm retry + fallback fires correctly
+
+---
+
+## Phase 3: Interview Tree Engine
+
+**3.1** Define node schemas using Zod
+```
+InterviewerQuestion — id, type, status, question, topic, depth, parent_id, children, summary
+IntervieweeResponse — id, type, status, answer, parent_id, children
+```
+
+**3.2** Define context object schema using Zod
+```
+current_focus, active_node_id, observations, covered_topics,
+pending_topics, contradictions, candidate_summary, timer
+```
+
+**3.3** Implement `createTree(subject)` — returns a fresh tree with empty root
+
+**3.4** Implement `addNode(tree, parentId, node)` — appends a new node to correct parent
+
+**3.5** Implement `updateNodeStatus(tree, nodeId, status)` — marks a node active / explored / skipped
+
+**3.6** Implement `canCollapse(node)` — returns true only if node and all descendants are explored to leaf
+
+**3.7** Implement `prepareTreeForLLM(tree)` — recursively compresses fully explored subtrees to summary, sends pending/active nodes in full
+
+**3.8** Implement `getPendingNodes(tree)` — returns flat list of all pending nodes across the tree
+
+**3.9** Validate — write unit tests for each operation, test compression on a sample tree with mixed explored/pending nodes
+
+---
+
+## Phase 4: Frontend Foundation
+
+**4.1** Initialize React + Vite inside `client/`
+
+**4.2** Create two-panel layout — chat panel left, IDE panel right, responsive split
+
+**4.3** Integrate Monaco Editor in IDE panel — set language to C++
+
+**4.4** Add Run button below Monaco — output display area below Run button
+
+**4.5** Add basic client-side routing — Home, Interview, History screens as separate views
+
+**4.6** Add browser `speechSynthesis` utility — `speak(text)` function, graceful fallback if browser does not support it
+
+**4.7** Validate — layout renders correctly, Monaco editor loads, typing code works, speak() works in browser
+
+---
+
+## Phase 5: WebSocket Layer
+
+**5.1** Add WebSocket server to backend using `ws` library — attach to existing Express HTTP server
+
+**5.2** Define all event type constants in a shared file both client and server import
+```
+CLIENT → SERVER:  session:start, answer:submit, session:end
+SERVER → CLIENT:  question:token, question:complete, tree:update, session:error, report:ready
+```
+
+**5.3** Add WebSocket client to frontend — connect on interview screen mount
+
+**5.4** Implement reconnection logic on client — exponential backoff, max 3 retries
+
+**5.5** Add ping/pong heartbeat — server pings every 30s, client responds, server closes stale connections
+
+**5.6** Add session ID to every WebSocket message — server uses it to route to correct session state
+
+**5.7** Validate — client connects, send a test event from client, receive a test event from server, disconnect and confirm reconnection fires
+
+---
+
+## Phase 6: Resume Upload + Parsing
+
+**6.1** Create REST `POST /upload/resume` endpoint — accepts `multipart/form-data`, supports PDF and plain text
+
+**6.2** Add `pdf-parse` library — extract plain text from uploaded PDF
+
+**6.3** Add input length limit — truncate resume text beyond 5000 characters before it touches anything else
+
+**6.4** Write resume extraction prompt — XML-delimited, instructs LLM to extract structured candidate profile
+```
+name, experience_level, skills, projects, roles
+```
+
+**6.5** Define candidate profile Zod schema — validate LLM extraction output
+
+**6.6** Store extracted profile in session memory (in-memory map keyed by session ID for now)
+
+**6.7** Return extracted profile to client — client shows a brief confirmation screen before continuing
+
+**6.8** Validate — upload a real resume PDF, confirm structured profile comes back correctly
+
+---
+
+## Phase 7: Subject Selection + Session Creation
+
+**7.1** Build subject selection UI — grid of subject cards, one selectable at a time
+```
+DSA | OS | DBMS | CN | OOPs | OOD | System Design | Tech Stack | Resume Cross Questions | Resume Roasting
+```
+
+**7.2** Create REST `POST /session/create` endpoint — takes subject + candidate profile, returns session ID
+
+**7.3** Create in-memory session store on backend — keyed by session ID, holds tree + context object + candidate profile
+
+**7.4** For Resume Roasting — add JD upload field on subject selection screen, `POST /upload/jd` endpoint mirrors resume upload flow
+
+**7.5** Validate — create a session for two different subjects, confirm separate session states exist
+
+---
+
+## Phase 8: Interview Orchestration Engine
+
+**8.1** Write system prompt template — who the LLM is, behavioral rules, XML delimiter instructions, output format contract
+
+**8.2** Write turn prompt template — injects compressed tree, context object, candidate profile, last answer, current objective. All user content wrapped in XML tags
+
+**8.3** Implement input sanitizer — strips prompt-injection patterns from resume text, answers, code before inserting into any prompt. Enforces length limits per input type
+
+**8.4** Define LLM turn output Zod schema
+```
+new_question_nodes[], activate_node_id, context_update, session_complete
+```
+
+**8.5** Implement `buildPrompt(session)` — assembles full prompt from session state using templates
+
+**8.6** Implement `processTurn(session, answer)` — calls LLM, validates output, applies tree mutations, updates context object
+
+**8.7** Implement `generateFirstQuestion(session)` — called once when interview starts, seeds the first InterviewerQuestion node
+
+**8.8** Validate — run a simulated 3-turn interview through the orchestration engine without WebSocket, confirm tree grows correctly each turn
+
+---
+
+## Phase 9: Live Interview Loop
+
+**9.1** On `session:start` WebSocket event — load session from memory, call `generateFirstQuestion`, stream tokens back via `question:token` events
+
+**9.2** On `question:complete` event on client — trigger `speak(question)` using browser TTS
+
+**9.3** Build chat message UI — interviewer messages appear on left, user input box at bottom with "Include code" checkbox
+
+**9.4** On answer submit — validate answer length, send `answer:submit` event with `{ answer, includeCode, code }`
+
+**9.5** On `answer:submit` on server — call `processTurn`, stream next question tokens, send `tree:update` after turn completes
+
+**9.6** Show typing indicator on client while `question:token` events are arriving
+
+**9.7** On `session:end` event — mark session complete, trigger report generation, save to MongoDB
+
+**9.8** Validate — complete a 5-turn interview end to end over WebSocket, confirm tree state is correct after each turn, TTS fires
+
+---
+
+## Phase 10: IDE + C++ Execution
+
+**10.1** Create REST `POST /code/run` endpoint — accepts `{ code, stdin }`
+
+**10.2** Write temp `.cpp` file to `/tmp` with a unique filename
+
+**10.3** Compile with `g++` via `child_process.exec` — capture compilation errors separately from runtime errors
+
+**10.4** Run compiled binary with 5 second timeout — capture stdout and stderr
+
+**10.5** Clean up temp files (source + binary) after execution regardless of success or failure
+
+**10.6** Return `{ stdout, stderr, compilationError, timedOut }` to client
+
+**10.7** Display output below Run button in IDE panel
+
+**10.8** When `includeCode` is true in `answer:submit` — append code content + last run output to the turn prompt inside `<ide_code>` and `<ide_output>` XML tags
+
+**10.9** Validate — write a simple C++ program with stdin, run it, confirm output appears. Write a program with a bug, confirm compilation error appears. Write an infinite loop, confirm timeout fires
+
+---
+
+## Phase 11: Resume Roasting
+
+**11.1** Write roasting system prompt — instructs LLM to act as a brutally honest technical recruiter
+
+**11.2** Write roasting turn prompt — injects resume + JD inside XML tags, asks for structured roast
+
+**11.3** Define roast report Zod schema
+```
+overall_impression, strengths[], weak_areas[],
+project_feedback[], skills_gap[], improvement_suggestions[], verdict
+```
+
+**11.4** Create `POST /roast` REST endpoint — takes session ID, calls LLM with roast prompts, validates output
+
+**11.5** Build roast report UI — displays each section clearly, scannable layout
+
+**11.6** Save roast report to MongoDB session record
+
+**11.7** Validate — upload a real resume + a sample JD, confirm roast report returns with all sections populated
+
+---
+
+## Phase 12: Session Persistence + History
+
+**12.1** Define MongoDB session schema — `sessionId, subject, candidateProfile, status, createdAt, completedAt, report`
+
+**12.2** Define MongoDB turn schema — `sessionId, turnNumber, question, answer, topic, code, codeOutput, timestamp`
+
+**12.3** On session create — write initial session document to MongoDB
+
+**12.4** After each accepted turn — write turn document to MongoDB
+
+**12.5** On session complete — update session document with final report and `completedAt`
+
+**12.6** Create REST `GET /sessions` endpoint — returns list of all sessions with basic metadata
+
+**12.7** Create REST `GET /sessions/:id` endpoint — returns full session with report
+
+**12.8** Build history screen UI — list of past sessions showing date, subject, verdict
+
+**12.9** Build report view — opens a past session's report in readable layout
+
+**12.10** Validate — complete an interview, check it appears in history, open the report from history
+
+---
+
+## Phase 13: Docker Finalization
+
+**13.1** Finalize backend Dockerfile — multi-stage, production ready, `node:20-alpine`
+
+**13.2** Finalize frontend Dockerfile — build stage with Vite, serve stage with nginx
+
+**13.3** Write Ollama model pull entrypoint script — `ollama serve & sleep 5 && ollama pull qwen2.5:0.5b`
+
+**13.4** Configure Docker internal networking — backend reaches MongoDB as `mongodb:27017`, Ollama as `ollama:11434`
+
+**13.5** Add named volumes for MongoDB data and Ollama models — data persists across container restarts
+
+**13.6** Add environment variable passthrough in docker-compose for all required vars
+
+**13.7** Test cold start — delete all volumes, run `docker-compose up`, confirm model pulls, interview works end to end
+
+---
+
+## Phase 14: Hardening + Edge Cases
+
+**14.1** Handle Ollama not ready on backend startup — retry connection with backoff before accepting requests
+
+**14.2** Handle MongoDB write failure during turn — log error, session continues, retry on next turn
+
+**14.3** Handle WebSocket drop mid-interview — save tree + context to MongoDB on every turn so session can be resumed
+
+**14.4** Handle `g++` not installed — return clear error message from `/code/run`, display it in IDE panel
+
+**14.5** Handle empty or whitespace-only answer submission — reject on client before sending
+
+**14.6** Handle LLM response exceeding reasonable token length — truncate before parsing
+
+**14.7** Add rate limiting on code execution endpoint — max 10 runs per session to prevent abuse
+
+**14.8** Add global Express error handler — catches unhandled errors, returns clean JSON, never leaks stack traces
+
+**14.9** Validate all edge cases — drop WebSocket mid-interview, submit empty answer, run malformed C++, simulate Ollama timeout
+
+---
+
+## Build Order Summary
+
+```
+0  Project foundation + Docker skeleton
+1  Backend foundation (Express, MongoDB, Ollama connectivity)
+2  LLM adapter (plug-and-play, retry, fallback)
+3  Tree engine (core data structure)
+4  Frontend foundation (layout, Monaco, routing)
+5  WebSocket layer (events, reconnection)
+6  Resume upload + parsing
+7  Subject selection + session creation
+8  Orchestration engine (prompts, sanitization, turn processing)
+9  Live interview loop (end to end)
+10 IDE + C++ execution
+11 Resume roasting
+12 Session persistence + history
+13 Docker finalization
+14 Hardening
+```
+
+Total: 14 phases, 80+ steps. Each step produces a visible or testable outcome.

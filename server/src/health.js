@@ -1,28 +1,14 @@
-import { getMongoStatus } from "./db.js";
-import { getRedisStatus } from "./redis.js";
+let mongoOk = false
+let ollamaOk = false
 
-function isSubsystemHealthy(status) {
-  return status === "connected";
-}
+export function setMongoStatus(ok)  { mongoOk  = ok }
+export function setOllamaStatus(ok) { ollamaOk = ok }
 
 export function getHealthSnapshot() {
-  const mongoStatus = getMongoStatus();
-  const redisStatus = getRedisStatus();
-  const ok =
-    isSubsystemHealthy(mongoStatus) && isSubsystemHealthy(redisStatus);
-
   return {
-    ok,
-    status: ok ? "healthy" : "degraded",
-    service: "ai-swe-mock-interviewer-server",
-    server: {
-      status: "alive",
-    },
-    mongo: {
-      status: mongoStatus,
-    },
-    redis: {
-      status: redisStatus,
-    },
-  };
+    ok:        mongoOk && ollamaOk,
+    mongo:     mongoOk  ? 'connected'   : 'disconnected',
+    ollama:    ollamaOk ? 'reachable'   : 'unreachable',
+    timestamp: new Date().toISOString(),
+  }
 }

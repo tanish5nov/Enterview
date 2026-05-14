@@ -1,30 +1,15 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose'
+import { logger } from './logger.js'
+import { setMongoStatus } from './health.js'
 
-let connectionPromise;
-
-const mongoStates = {
-  0: "disconnected",
-  1: "connected",
-  2: "connecting",
-  3: "disconnecting",
-};
-
-export async function connectToMongo(mongodbUri) {
-  if (!connectionPromise) {
-    connectionPromise = mongoose.connect(mongodbUri, {
-      serverSelectionTimeoutMS: 5000,
-    });
-  }
-
+export async function connectToMongo(uri) {
   try {
-    await connectionPromise;
-    return mongoose.connection;
-  } catch (error) {
-    connectionPromise = undefined;
-    throw error;
+    await mongoose.connect(uri)
+    setMongoStatus(true)
+    logger.info('MongoDB connected')
+  } catch (err) {
+    setMongoStatus(false)
+    logger.error('MongoDB connection failed', { error: err.message })
+    throw err
   }
-}
-
-export function getMongoStatus() {
-  return mongoStates[mongoose.connection.readyState] || "unknown";
 }
