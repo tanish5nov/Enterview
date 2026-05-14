@@ -1,5 +1,18 @@
 .env
 .env.local
 .env.*.local
+
+# dependencies
 node_modules
+**/node_modules
+
+# build output
 client/dist
+server/dist
+
+# temp files from C++ execution
+/tmp/*.cpp
+/tmp/*.out
+
+# OS
+.DS_Store

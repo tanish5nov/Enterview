@@ -1,26 +1,14 @@
-import { logger } from "./logger.js";
+import { logger } from './logger.js'
 
 export function requestLogger(req, res, next) {
-  const startTime = Date.now();
-
-  res.on("finish", () => {
-    logger.info("HTTP request completed", {
+  const start = Date.now()
+  res.on('finish', () => {
+    logger.info('request', {
       method: req.method,
-      path: req.originalUrl,
-      statusCode: res.statusCode,
-      durationMs: Date.now() - startTime,
-    });
-  });
-
-  next();
-}
-
-export function errorLogger(error, req, _res, next) {
-  logger.error("HTTP request failed", {
-    method: req.method,
-    path: req.originalUrl,
-    error: error.message,
-  });
-
-  next(error);
+      path:   req.path,
+      status: res.statusCode,
+      ms:     Date.now() - start,
+    })
+  })
+  next()
 }

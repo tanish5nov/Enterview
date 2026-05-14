@@ -1,43 +1,20 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
+function required(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(`Missing required env var: ${name}`)
+  return value
+}
 
-const currentFilePath = fileURLToPath(import.meta.url);
-const currentDirPath = path.dirname(currentFilePath);
-const projectRootPath = path.resolve(currentDirPath, "..", "..");
-
-dotenv.config({
-  path: path.join(projectRootPath, ".env"),
-  quiet: true,
-});
-
-const requiredEnvVars = [
-  "MONGODB_URI",
-  "REDIS_URL",
-  "JWT_ACCESS_SECRET",
-  "JWT_REFRESH_SECRET",
-  "OLLAMA_BASE_URL",
-];
+let _config = null
 
 export function getConfig() {
-  const missing = requiredEnvVars.filter((name) => {
-    const value = process.env[name];
-    return typeof value !== "string" || value.trim() === "";
-  });
+  if (_config) return _config
 
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}. ` +
-        `Populate AIEngineerInterviewer/.env using AIEngineerInterviewer/.env.example.`,
-    );
+  _config = {
+    port: parseInt(process.env.PORT || '8080', 10),
+    mongodbUri: required('MONGODB_URI'),
+    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
+    ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:0.5b',
   }
 
-  return {
-    port: Number(process.env.PORT || 4000),
-    mongodbUri: process.env.MONGODB_URI,
-    redisUrl: process.env.REDIS_URL,
-    jwtAccessSecret: process.env.JWT_ACCESS_SECRET,
-    jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
-    ollamaBaseUrl: process.env.OLLAMA_BASE_URL,
-  };
+  return _config
 }
